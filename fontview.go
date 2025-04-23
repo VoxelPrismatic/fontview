@@ -1,14 +1,52 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"os"
 
+	"fontview/tables"
+
 	"github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6/mainthread"
+	"golang.org/x/image/font/sfnt"
 )
+
+func readFont(path string) (*sfnt.Font, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	return sfnt.Parse(data)
+}
 
 func main() {
 	qt6.NewQApplication(os.Args)
 	defer qt6.QApplication_Exec()
+
+	msg := qt6.NewQProgressDialog(nil)
+	msg.SetWindowTitle("Loading...")
+	msg.SetLabelText("Loading Unicode Tables...")
+	msg.SetWindowModality(qt6.WindowModal)
+	msg.SetMinimum(0)
+	msg.SetMaximum(2)
+	msg.SetValue(0)
+	msg.Show()
+
+	go func() {
+		tables.ParseBlocks()
+		mainthread.Wait(func() { msg.SetValue(1) })
+
+		tables.ParseNamesList()
+		mainthread.Wait(func() { msg.SetValue(2) })
+	}()
 
 	window := qt6.NewQMainWindow(nil)
 	window.SetWindowTitle("Glyph Viewer")
@@ -22,70 +60,21 @@ func main() {
 
 	fontBox := qt6.NewQFontComboBox(nil)
 	searchBox := qt6.NewQLineEdit(nil)
-	sizeBox := qt6.NewQSpinBox(nil)
 
 	headLayout.AddWidget3(searchBox.QWidget, 1, qt6.AlignTop)
 	headLayout.AddWidget3(fontBox.QWidget, 0, qt6.AlignTop)
-	headLayout.AddWidget3(sizeBox.QWidget, 0, qt6.AlignTop)
 
 	searchBox.SetPlaceholderText("Search glyphs")
-	sizeBox.SetMinimum(8)
-	sizeBox.SetMaximum(72)
-	sizeBox.SetValue(24)
 
 	fontHeight := fontBox.Geometry().Height()
-	sizeBox.SetFixedHeight(fontHeight)
 	searchBox.SetFixedHeight(fontHeight)
 
-	filterWidget := qt6.NewQWidget(nil)
-	filterLayout := qt6.NewQHBoxLayout(filterWidget)
-	filterLayout.AddStretch()
-
-	var monospaceFilter qt6.QFontComboBox__FontFilter
-	var bitmapFilter qt6.QFontComboBox__FontFilter
-
-	filterByMonospace := qt6.NewQCheckBox(nil)
-	filterByMonospace.SetText("Monospace")
-	filterByMonospace.SetTristate()
-	filterByMonospace.OnStateChanged(func(state int) {
-		switch qt6.CheckState(state) {
-		case qt6.Checked:
-			filterByMonospace.SetToolTip("Show only monospace fonts")
-			monospaceFilter = qt6.QFontComboBox__MonospacedFonts
-		case qt6.PartiallyChecked:
-			filterByMonospace.SetToolTip("Show all fonts")
-			monospaceFilter = qt6.QFontComboBox__AllFonts
-		case qt6.Unchecked:
-			filterByMonospace.SetToolTip("Show only proportional fonts")
-			monospaceFilter = qt6.QFontComboBox__ProportionalFonts
-		}
-		fontBox.SetFontFilters(monospaceFilter | bitmapFilter)
-	})
-	filterByMonospace.SetCheckState(qt6.PartiallyChecked)
-	filterLayout.AddWidget3(filterByMonospace.QWidget, 0, qt6.AlignTop)
-
-	filterByBitmap := qt6.NewQCheckBox(nil)
-	filterByBitmap.SetText("Bitmap")
-	filterByBitmap.SetTristate()
-	filterByBitmap.OnStateChanged(func(state int) {
-		switch qt6.CheckState(state) {
-		case qt6.Checked:
-			filterByBitmap.SetToolTip("Show only bitmap fonts")
-			bitmapFilter = qt6.QFontComboBox__NonScalableFonts
-		case qt6.PartiallyChecked:
-			filterByBitmap.SetToolTip("Show all fonts")
-			bitmapFilter = qt6.QFontComboBox__AllFonts
-		case qt6.Unchecked:
-			filterByBitmap.SetToolTip("Show only vector fonts")
-			bitmapFilter = qt6.QFontComboBox__ScalableFonts
-		}
-		fontBox.SetFontFilters(monospaceFilter | bitmapFilter)
-	})
-	filterByBitmap.SetCheckState(qt6.PartiallyChecked)
-	filterLayout.AddWidget3(filterByBitmap.QWidget, 0, qt6.AlignTop)
-
 	layout.AddWidget3(headWidget, 0, qt6.AlignTop)
-	layout.AddWidget3(filterWidget, 0, qt6.AlignTop)
+
+	fontBox.OnCurrentFontChanged(func(font *qt6.QFont) {
+		fmt.Println("Font changed to", font.Style)
+		fmt.Println()
+	})
 
 	window.SetCentralWidget(viewport)
 	window.Show()
