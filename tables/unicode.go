@@ -37,17 +37,20 @@ type Block struct {
 }
 
 func fetchData(url string) ([]byte, error) {
+	fmt.Println("Read " + url)
 	response, err := http.Get(url)
 	if err != nil {
+		fmt.Println("Error: " + err.Error())
 		return nil, err
 	}
-	defer response.Body.Close()
 
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
 		panic(err)
 	}
 
+	fmt.Println("Done")
+	response.Body.Close()
 	return data, nil
 }
 
