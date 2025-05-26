@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"fontview/tables"
@@ -71,28 +72,29 @@ func readTables() {
 
 func renderGlyphs() {
 	if !tableMut.TryLock() {
-		fmt.Println("Blocked")
 		return
-	} else {
-		fmt.Println("Lock acquired")
 	}
 
 	rows := tableWidget.RowCount()
-	sheetN := tableScroller.Value() - 1
+	sheetN := tableScroller.Value() - (rows / 3)
 	w := tableWidget.ColumnWidth(0)
 	px := max(int(float64(w)*0.6), 4)
 	font := qt6.NewQFont2(fontBox.CurrentFont().Family())
 	font.SetPixelSize(px)
 	rawFont := qt6.QRawFont_FromFont(font)
+	normalPalette := tableWidget.Palette()
+	inversePalette := qt6.NewQPalette()
+	inversePalette.SetColor2(qt6.QPalette__Text, normalPalette.ColorWithCr(qt6.QPalette__Link))
+	inversePalette.SetColor2(qt6.QPalette__Base, normalPalette.ColorWithCr(qt6.QPalette__Text))
 
 	for idx := range rows {
 		tableWidget.SetRowHeight(idx, w)
-		if idx == 0 {
+		if idx < rows/3 {
 			continue
 		}
 
 		item := tableWidget.VerticalHeaderItem(idx)
-		text := fmt.Sprintf("u%03x_", idx+sheetN)
+		text := fmt.Sprintf("%03X_", idx+sheetN)
 		if item == nil {
 			item = qt6.NewQTableWidgetItem2(text)
 			tableWidget.SetVerticalHeaderItem(idx, item)
@@ -115,22 +117,32 @@ func renderGlyphs() {
 				label.SetFont(font)
 			}
 
+			var targetPalette *qt6.QPalette
 			if rawFont.SupportsCharacter(uint(char)) {
 				label.SetText(string(char))
-				label.SetForegroundRole(qt6.QPalette__Text)
-				label.SetBackgroundRole(qt6.QPalette__Text)
+				targetPalette = normalPalette
+				label.SetPalette(normalPalette)
 			} else {
-				label.SetText(fmt.Sprintf("u%04x", int(char)))
+				st := fmt.Sprintf("%04X", int(char))
+				if len(st) >= 8 {
+					st := strings.Repeat("0", len(st)%4) + st
+					parts := []string{}
+					for i := 0; i < len(st); i += 4 {
+						parts = append(parts, st[i:i+4])
+					}
+					st = strings.Join(parts, "<br>")
+				} else {
+					st = strings.Repeat("0", len(st)%2) + st
+					st = st[:len(st)/2] + "<br>" + st[len(st)/2:]
+				}
+				label.SetText(st)
 				label.SetFont(tableWidget.Font())
-				label.SetForegroundRole(qt6.QPalette__Dark)
-				label.SetBackgroundRole(qt6.QPalette__Dark)
-				cell.SetBackgroundRole(qt6.QPalette__AlternateBase)
-				cell.SetForegroundRole(qt6.QPalette__LinkVisited)
-				label.SetFixedSize2(w, w)
+				targetPalette = inversePalette
 			}
+			label.SetPalette(targetPalette)
+			cell.SetPalette(targetPalette)
 		}
 	}
-	fmt.Println("Unlocked")
 	tableMut.Unlock()
 }
 
@@ -164,15 +176,10 @@ func main() {
 	layout.AddWidget(headWidget)
 
 	tableWidget = qt6.NewQTableWidget(nil)
-	tableWidget.SetHorizontalHeaderLabels([]string{
-		"0", "1", "2", "3", "4", "5", "6", "7",
-		"8", "9", "a", "b", "c", "d", "e", "f",
-	})
 	tableWidget.HorizontalHeader().SetSectionResizeMode(qt6.QHeaderView__Fixed)
 	tableWidget.VerticalHeader().SetSectionResizeMode(qt6.QHeaderView__Fixed)
 	tableWidget.SetHorizontalScrollBarPolicy(qt6.ScrollBarAlwaysOff)
-
-	// tableWidget.SetVerticalScrollBarPolicy(qt6.ScrollBarAlwaysOff)
+	tableWidget.SetVerticalScrollBarPolicy(qt6.ScrollBarAlwaysOff)
 	tableScroller = qt6.NewQScrollBar2()
 
 	bodyWidget := qt6.NewQWidget(nil)
@@ -195,8 +202,11 @@ func main() {
 	window.OnShowEvent(func(_ func(_ *qt6.QShowEvent), evt *qt6.QShowEvent) {
 		go func() {
 			readTables()
-			tableScroller.SetMaximum(int(blocks[len(blocks)-1].End) / 16)
 			tableWidget.SetColumnCount(16)
+			for c := range 16 {
+				item := qt6.NewQTableWidgetItem2(fmt.Sprintf("%X", c))
+				tableWidget.SetHorizontalHeaderItem(c, item)
+			}
 			mainthread.Wait(func() {
 				renderGlyphs()
 				tableScroller.SetMaximum(int(blocks[len(blocks)-1].End) / 16)
@@ -217,13 +227,12 @@ func main() {
 				tableWidget.SetColumnWidth(column, col_w)
 			}
 		}
-		tableWidget.SetRowCount(tableWidget.Size().Height()/col_w + 4)
-		tableWidget.VerticalScrollBar().SetValue(1)
+		tableWidget.SetRowCount((tableWidget.Size().Height() / col_w) * 3)
+		tableWidget.VerticalScrollBar().SetValue(tableWidget.RowCount() / 3)
 		renderGlyphs()
 	})
 
 	tableScroller.OnValueChanged(func(value int) {
-		fmt.Printf("Scroll to : %d\n", value)
 		renderGlyphs()
 	})
 
@@ -237,10 +246,42 @@ func main() {
 		ignoreEvt = true
 		sheetMax := tableScroller.Maximum()
 		sheetMin := tableScroller.Minimum()
-		fmt.Printf("(%d, %d)\n", dx, dy)
 		sheetNew := max(min(tableScroller.Value()-dy, sheetMax), sheetMin)
 		tableScroller.SetValue(sheetNew)
-		tableWidget.VerticalScrollBar().SetValue(1)
+		top := tableWidget.RowCount() / 3
+		tableWidget.VerticalScrollBar().SetValue(top)
+	})
+
+	tableWidget.OnKeyPressEvent(func(super func(evt *qt6.QKeyEvent), evt *qt6.QKeyEvent) {
+		v := tableScroller.Value()
+		top := tableWidget.RowCount() / 3
+
+		dy := top
+		if evt.Modifiers()&qt6.ControlModifier > 0 {
+			dy = 0x100
+		}
+		switch evt.Key() {
+		case int(qt6.Key_PageDown):
+			tableScroller.SetValue(v + dy)
+		case int(qt6.Key_PageUp):
+			tableScroller.SetValue(v - dy)
+		case int(qt6.Key_Down):
+			if tableWidget.CurrentRow() >= (top-1)*2 {
+				tableScroller.SetValue(v + 1)
+				evt.Ignore()
+			} else {
+				super(evt)
+			}
+		case int(qt6.Key_Up):
+			if tableWidget.CurrentRow() <= top {
+				tableScroller.SetValue(v - 1)
+				evt.Ignore()
+			} else {
+				super(evt)
+			}
+		default:
+			super(evt)
+		}
 	})
 
 	window.SetCentralWidget(viewport)
