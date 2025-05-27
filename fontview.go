@@ -215,7 +215,7 @@ func main() {
 	})
 
 	tableWidget.OnResizeEvent(func(_ func(_ *qt6.QResizeEvent), evt *qt6.QResizeEvent) {
-		tbl_w := contentSize(tableWidget) -
+		tbl_w := contentSize(tableWidget) - 7 -
 			contentSize(tableWidget.VerticalHeader())
 
 		excess := 16 - (tbl_w % 16)
