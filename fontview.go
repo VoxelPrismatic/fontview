@@ -25,6 +25,12 @@ type FontPair struct {
 	Real *qt6.QFont
 }
 
+type Render struct {
+	Text  string
+	Font  *qt6.QFont
+	Style string
+}
+
 var (
 	fontBox       *qt6.QFontComboBox
 	tableWidget   *qt6.QTableWidget
@@ -91,8 +97,68 @@ func readTables() {
 	<-doneNames
 }
 
+type FontCache[T any] map[string]map[rune]T
+
+var monoFont *qt6.QFont
+var selectedCache = FontCache[Render]{}
+var labelCache = FontCache[Render]{}
 var fallbackCache = map[rune]string{}
-var supportsCache = map[string]map[rune]bool{}
+var supportsCache = FontCache[bool]{}
+
+func runeSupported(r rune) bool {
+	fam := fontPair.Raw.FamilyName()
+	cache := supportsCache[fam]
+	if cache == nil {
+		cache = map[rune]bool{}
+		supportsCache[fam] = cache
+	}
+
+	if _, ok := cache[r]; !ok {
+		cache[r] = fontPair.Raw.SupportsCharacter(uint(r))
+	}
+
+	return cache[r]
+}
+
+func makeLabel(r rune, selected bool) Render {
+	fam := fontPair.Real.Family()
+	targetCache := labelCache
+	if selected {
+		targetCache = selectedCache
+	}
+
+	cache, ok := targetCache[fam]
+	if !ok || cache == nil {
+		cache = map[rune]Render{}
+		targetCache[fam] = cache
+	}
+
+	if ret, ok := cache[r]; ok {
+		return ret
+	}
+
+	ret := Render{}
+	st := string(r)
+
+	if runeSupported(r) {
+		ret.Font = fontPair.Real
+		ret.Style = ""
+	} else {
+		st = runeFallback(r)
+		ret.Font = monoFont
+		ret.Style = "background-color: " + sakurapine.Hl.Low + ";"
+		ret.Style += "color: " + sakurapine.Text.Muted + ";"
+	}
+
+	if selected {
+		st = fmt.Sprintf("<b><font color='%s'>%s</font></b>", sakurapine.Layer.Base, st)
+		ret.Style = ""
+	}
+
+	ret.Text = st
+	cache[r] = ret
+	return ret
+}
 
 func runeFallback(r rune) string {
 	if ret, ok := fallbackCache[r]; ok {
@@ -131,17 +197,12 @@ func renderGlyphs() {
 		tableWidget.SetRowHeight(idx, w)
 	}
 
-	cache := supportsCache[fontPair.Raw.FamilyName()]
-	if cache == nil {
-		cache = map[rune]bool{}
-		supportsCache[fontPair.Raw.FamilyName()] = cache
-	}
-
 	for idx := rows / 3; idx <= rows/3*2; idx++ {
 		item := tableWidget.VerticalHeaderItem(idx)
 		text := fmt.Sprintf("%03X_", idx+sheetN)
 		if item == nil {
 			item = qt6.NewQTableWidgetItem2(text)
+			item.SetFont(monoFont)
 			tableWidget.SetVerticalHeaderItem(idx, item)
 		} else {
 			item.SetText(text)
@@ -149,13 +210,14 @@ func renderGlyphs() {
 
 		for col := range 16 {
 			char := rune(16*(sheetN+idx) + col)
+			isCur := col == curC && idx == curR
 			cell := tableWidget.CellWidget(idx, col)
+			render := makeLabel(char, isCur)
 			var label *qt6.QLabel
-			var targetFont *qt6.QFont
 
 			if cell == nil {
 				label = qt6.NewQLabel2()
-				label.SetFont(fontPair.Real)
+				label.SetFont(render.Font)
 				label.SetAlignment(qt6.AlignCenter)
 				cell = label.QWidget
 				tableWidget.SetCellWidget(idx, col, label.QWidget)
@@ -163,32 +225,15 @@ func renderGlyphs() {
 				label = qt6.UnsafeNewQLabel(cell.Metacast("QLabel"))
 			}
 
-			if _, ok := cache[char]; !ok {
-				cache[char] = fontPair.Raw.SupportsCharacter(uint(char))
+			label.SetText(render.Text)
+			s, t := label.Font(), render.Font
+			if s.Family() != t.Family() || s.PixelSize() != t.PixelSize() {
+				label.SetFont(render.Font)
+			}
+			if label.StyleSheet() != render.Style {
+				label.SetStyleSheet(render.Style)
 			}
 
-			st := string(char)
-			if cache[char] {
-				targetFont = fontPair.Real
-			} else {
-				st = runeFallback(char)
-				targetFont = tableWidget.Font()
-			}
-
-			p := label.Palette()
-			if col == curC && idx == curR {
-				p.SetColor2(label.BackgroundRole(), qt6.NewQColor6("yellow"))
-				label.SetPalette(p)
-				fmt.Printf("Selected: (%d, %d)\n", idx, col)
-				st = fmt.Sprintf("<font color=\"%s\"><b>%s</b></font>", sakurapine.Layer.Base, st)
-			} else {
-				st = fmt.Sprintf("<font color='%s'>%s</font>", sakurapine.Text.Normal, st)
-			}
-
-			label.SetText(st)
-			if s, t := label.Font(), targetFont; s.PixelSize() != t.PixelSize() || s.Family() != t.Family() {
-				label.SetFont(t)
-			}
 		}
 	}
 	tableMut.Unlock()
@@ -219,6 +264,8 @@ func main() {
 
 	qt6.NewQApplication(os.Args)
 	defer qt6.QApplication_Exec()
+
+	monoFont = qt6.QFontDatabase_SystemFont(qt6.QFontDatabase__FixedFont)
 
 	window = qt6.NewQMainWindow(nil)
 	window.SetWindowTitle("Glyph Viewer")
@@ -269,6 +316,8 @@ func main() {
 	tableWidget.VerticalHeader().SetSectionResizeMode(qt6.QHeaderView__Fixed)
 	tableWidget.SetVerticalScrollBarPolicy(qt6.ScrollBarAlwaysOff)
 	tableScroller = qt6.NewQScrollBar2()
+
+	tableWidget.HorizontalHeader().SetFont(monoFont)
 
 	bodyWidget := qt6.NewQWidget(nil)
 	bodyLayout := qt6.NewQHBoxLayout(bodyWidget)
