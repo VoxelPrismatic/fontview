@@ -41,6 +41,38 @@ var (
 	msg           *qt6.QProgressDialog
 )
 
+var maxGlyphCache = map[string]uint64{}
+var maxGlyphSuccess = map[string]bool{}
+var maxGlyphMut sync.Mutex
+
+func maxGlyph() rune {
+	target := fontPair.Raw
+	fam := target.FamilyName()
+	last, ok := maxGlyphCache[fam]
+	if !ok {
+		if len(blocks) == 0 {
+			return 0xffff
+		}
+		last = blocks[len(blocks)-1].End
+	}
+
+	for code := last; code >= 0; code-- {
+		if fontPair.Raw.SupportsCharacter(uint(code)) {
+			maxGlyphMut.Lock()
+			maxGlyphSuccess[fam] = true
+			maxGlyphMut.Unlock()
+			return rune(code)
+		}
+		if target != fontPair.Raw {
+			maxGlyphMut.Lock()
+			maxGlyphCache[fam] = code
+			maxGlyphMut.Unlock()
+			return -1
+		}
+	}
+	return -1
+}
+
 func makeStyleSheet(styles map[string]map[string]string) string {
 	sb := strings.Builder{}
 	for cls, obj := range styles {
@@ -107,8 +139,8 @@ var supportsCache = FontCache[bool]{}
 
 func runeSupported(r rune) bool {
 	fam := fontPair.Raw.FamilyName()
-	cache := supportsCache[fam]
-	if cache == nil {
+	cache, ok := supportsCache[fam]
+	if !ok || cache == nil {
 		cache = map[rune]bool{}
 		supportsCache[fam] = cache
 	}
@@ -138,24 +170,23 @@ func makeLabel(r rune, selected bool) Render {
 	}
 
 	ret := Render{}
-	st := string(r)
+	ret.Text = string(r)
 
 	if runeSupported(r) {
 		ret.Font = fontPair.Real
 		ret.Style = ""
 	} else {
-		st = runeFallback(r)
+		ret.Text = runeFallback(r)
 		ret.Font = monoFont
 		ret.Style = "background-color: " + sakurapine.Hl.Low + ";"
 		ret.Style += "color: " + sakurapine.Text.Muted + ";"
 	}
 
 	if selected {
-		st = fmt.Sprintf("<b><font color='%s'>%s</font></b>", sakurapine.Layer.Base, st)
-		ret.Style = ""
+		ret.Style = "color: " + sakurapine.Layer.Base + ";"
+		ret.Style += "font-weight: bold;"
 	}
 
-	ret.Text = st
 	cache[r] = ret
 	return ret
 }
@@ -246,18 +277,32 @@ func UpdateRealFont() {
 	setFont.SetPixelSize(px)
 	rawFont := qt6.QRawFont_FromFont(setFont)
 	fontPair = FontPair{rawFont, setFont}
-	for r := range tableWidget.RowCount() {
-		for c := range tableWidget.ColumnCount() {
-			cell := tableWidget.CellWidget(r, c)
-			if cell != nil {
-				cell.SetFont(setFont)
-			}
+	renderGlyphs()
+	go func() {
+		var maxRune rune
+		fam := fontPair.Raw.FamilyName()
+		maxGlyphMut.Lock()
+		done := maxGlyphSuccess[fam]
+		maxGlyphMut.Unlock()
+
+		if !done {
+			maxRune = maxGlyph()
+		} else {
+			maxGlyphMut.Lock()
+			maxRune = rune(maxGlyphCache[fam])
+			maxGlyphMut.Unlock()
 		}
-	}
+		if maxRune <= 0 {
+			return
+		}
+		maxRune += maxRune % 16
+
+		tableScroller.SetMaximum(int(maxRune / 16))
+	}()
+
 }
 
 func main() {
-	fmt.Println("hi")
 	swatch := sakura.MapSwatch(sakura.Sakura.Parse(), func(c uint) string {
 		return fmt.Sprintf("#%06x", c)
 	})
@@ -374,6 +419,8 @@ func main() {
 	}
 
 	tableWidget.OnResizeEvent(func(_ func(_ *qt6.QResizeEvent), evt *qt6.QResizeEvent) {
+		labelCache = FontCache[Render]{}
+		selectedCache = FontCache[Render]{}
 		resizeGlyphs()
 	})
 
@@ -468,3 +515,5 @@ func contentSize(obj Widthable) int {
 	w := sz.Width() + margins.Left() + margins.Right()
 	return w
 }
+
+var searchCache = map[string]map[string][]rune{}
