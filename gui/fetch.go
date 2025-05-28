@@ -13,6 +13,7 @@ var (
 	blocksMut sync.Mutex
 	names     map[string]tables.Node
 	namesMut  sync.Mutex
+	msg       *qt6.QProgressDialog
 )
 
 func readTables() {

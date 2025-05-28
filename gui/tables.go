@@ -108,57 +108,6 @@ func UpdateRealFont() {
 	}()
 }
 
-func tbl_OnKeyEvt(super func(evt *qt6.QKeyEvent), evt *qt6.QKeyEvent) {
-	v := tableScroller.Value()
-	top := tableWidget.RowCount() / 3
-
-	dy := top
-	mods := evt.Modifiers()
-	if mods&qt6.ControlModifier > 0 {
-		dy = 0x100
-	}
-	switch qt6.Key(evt.Key()) {
-	case qt6.Key_PageDown:
-		tableScroller.SetValue(v + dy)
-	case qt6.Key_PageUp:
-		tableScroller.SetValue(v - dy)
-	case qt6.Key_Down:
-		if tableWidget.CurrentRow() >= (top-1)*2 {
-			tableScroller.SetValue(v + 1)
-			evt.Ignore()
-		} else {
-			super(evt)
-		}
-	case qt6.Key_Up:
-		if tableWidget.CurrentRow() <= top {
-			tableScroller.SetValue(v - 1)
-			evt.Ignore()
-		} else {
-			super(evt)
-		}
-	case qt6.Key_Equal:
-		if mods&qt6.ControlModifier > 0 {
-			tbl_autoSize = false
-			tbl_col_w += 1
-			resizeGlyphs()
-		}
-	case qt6.Key_Minus:
-		if mods&qt6.ControlModifier > 0 {
-			tbl_autoSize = false
-			tbl_col_w = max(tbl_col_w-1, 4)
-			resizeGlyphs()
-		}
-	case qt6.Key_0:
-		if mods&qt6.ControlModifier > 0 {
-			tbl_autoSize = true
-			resizeGlyphs()
-		}
-
-	default:
-		super(evt)
-	}
-}
-
 func resizeGlyphs() {
 	excess := 16
 	if tbl_autoSize {
@@ -179,4 +128,29 @@ func resizeGlyphs() {
 	tableWidget.VerticalScrollBar().SetValue(tableWidget.RowCount() / 3)
 	UpdateRealFont()
 	renderGlyphs()
+}
+
+func MakeTable() *qt6.QWidget {
+	tableWidget = qt6.NewQTableWidget(nil)
+	tableWidget.HorizontalHeader().SetSectionResizeMode(qt6.QHeaderView__Fixed)
+	tableWidget.VerticalHeader().SetSectionResizeMode(qt6.QHeaderView__Fixed)
+	tableWidget.SetVerticalScrollBarPolicy(qt6.ScrollBarAlwaysOff)
+	tableScroller = qt6.NewQScrollBar2()
+
+	tableWidget.HorizontalHeader().SetFont(monoFont)
+
+	bodyWidget := qt6.NewQWidget(nil)
+	bodyLayout := qt6.NewQHBoxLayout(bodyWidget)
+	bodyLayout.SetContentsMargins(0, 0, 0, 0)
+
+	bodyLayout.AddWidget(tableWidget.QWidget)
+	bodyLayout.AddWidget(tableScroller.QWidget)
+
+	tableWidget.OnKeyPressEvent(tbl_KeyEvt)
+	tableWidget.OnResizeEvent(tbl_ResizeEvt)
+	tableScroller.OnValueChanged(tbl_ScrollChanged)
+	tableWidget.OnScrollContentsBy(tbl_ScrollEvt)
+	tableWidget.OnCurrentCellChanged(tbl_CellChanged)
+
+	return bodyWidget
 }
