@@ -59,7 +59,7 @@ type VectorPalette[T any] struct {
 	Main  VectorTheme[T]
 }
 
-type DerivePalette VectorPalette[int]
+type DerivePalette VectorPalette[uint]
 
 func MergeSwatch[T, R any](swatch SakuraSwatch[T], cb SakuraSwatch[func(T) R]) SakuraSwatch[R] {
 	return SakuraSwatch[R]{

@@ -2,22 +2,25 @@ package sakura
 
 import (
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"math"
 )
 
 type RGB struct {
-	R int
-	G int
-	B int
+	R uint
+	G uint
+	B uint
+}
+
+func (rgb RGB) String() string {
+	return fmt.Sprintf("#%06x", rgb.ToHexInt())
 }
 
 func clamp[T cmp.Ordered](min_, val, max_ T) T {
 	return min(max(min_, val), max_)
 }
 
-func (rgb RGB) FromHexInt(hex int) RGB {
+func (rgb RGB) FromHexInt(hex uint) RGB {
 	return RGB{
 		R: (hex & 0xff0000) >> 16,
 		G: (hex & 0x00ff00) >> 8,
@@ -25,8 +28,10 @@ func (rgb RGB) FromHexInt(hex int) RGB {
 	}
 }
 
-func (rgb RGB) ToHexInt() int {
-	return (clamp(0, rgb.R, 255) << 16) + (clamp(0, rgb.G, 255) << 8) + clamp(0, rgb.B, 255)
+func (rgb RGB) ToHexInt() uint {
+	return (clamp(0, rgb.R, 255) << 16) +
+		(clamp(0, rgb.G, 255) << 8) +
+		clamp(0, rgb.B, 255)
 }
 
 var _int = map[bool]int{
@@ -83,33 +88,33 @@ func (hsl HSLVector) Rgb() RGB {
 	int_part := math.Floor(hue * 6)
 	float_part := hue*6 - int_part
 
-	pilot := lum * (1 - sat)
+	prime := lum * (1 - sat)
 	quart := lum * (1 - float_part*sat)
 	third := lum * (1 - (1-float_part)*sat)
 
 	switch int_part {
 	case 0:
-		r, g, b = lum, third, pilot
+		r, g, b = lum, third, prime
 	case 1:
-		r, g, b = quart, lum, pilot
+		r, g, b = quart, lum, prime
 	case 2:
-		r, g, b = pilot, lum, third
+		r, g, b = prime, lum, third
 	case 3:
-		r, g, b = pilot, quart, lum
+		r, g, b = prime, quart, lum
 	case 4:
-		r, g, b = third, pilot, lum
+		r, g, b = third, prime, lum
 	default:
-		r, g, b = lum, pilot, quart
+		r, g, b = lum, prime, quart
 	}
 
 	return RGB{
-		R: clamp(0, int(math.Round(r*255)), 255),
-		G: clamp(0, int(math.Round(g*255)), 255),
-		B: clamp(0, int(math.Round(b*255)), 255),
+		R: clamp(0, uint(math.Round(r*255)), 255),
+		G: clamp(0, uint(math.Round(g*255)), 255),
+		B: clamp(0, uint(math.Round(b*255)), 255),
 	}
 }
 
-func (vec HSLVector) Calc(source, target int) HSLVector {
+func (vec HSLVector) Calc(source, target uint) HSLVector {
 	src := RGB{}.FromHexInt(source).Hsl()
 	trg := RGB{}.FromHexInt(target).Hsl()
 
@@ -120,7 +125,7 @@ func (vec HSLVector) Calc(source, target int) HSLVector {
 	}
 }
 
-func (vec HSLVector) Tx(hex int) int {
+func (vec HSLVector) Tx(hex uint) uint {
 	rgb := RGB{}.FromHexInt(hex)
 	hsl := rgb.Hsl()
 	tx := HSLVector{
@@ -132,8 +137,8 @@ func (vec HSLVector) Tx(hex int) int {
 	return rgb.ToHexInt()
 }
 
-func (v DerivePalette) Parse() SakuraSwatch[int] {
-	ret := SakuraSwatch[int]{}
+func (v DerivePalette) Parse() SakuraSwatch[uint] {
+	ret := SakuraSwatch[uint]{}
 
 	ret.Dawn.Paint = v.Paint
 	ret.Moon.Paint = MergePaint(v.Paint, Vectors.Moon.Paint)
@@ -152,16 +157,4 @@ func (v DerivePalette) Parse() SakuraSwatch[int] {
 	ret.Main.Text = DeriveText(v.Main.Text, Vectors.Main.Text)
 
 	return ret
-}
-
-func Test() {
-	b, err := json.Marshal(MapSwatch(
-		Sakura.Parse(),
-		func(c int) string { return fmt.Sprintf("#%06x", c) },
-	))
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(string(b))
 }
