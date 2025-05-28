@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"fontview/sakura"
 	"fontview/tables"
 
 	"github.com/mappu/miqt/qt6"
@@ -19,14 +20,34 @@ var (
 	namesMut  sync.Mutex
 )
 
+type FontPair struct {
+	Raw  *qt6.QRawFont
+	Real *qt6.QFont
+}
+
 var (
 	fontBox       *qt6.QFontComboBox
 	tableWidget   *qt6.QTableWidget
+	fontPair      FontPair
 	tableScroller *qt6.QScrollBar
 	tableMut      sync.Mutex
 	window        *qt6.QMainWindow
 	msg           *qt6.QProgressDialog
 )
+
+func makeStyleSheet(styles map[string]map[string]string) string {
+	sb := strings.Builder{}
+	for cls, obj := range styles {
+		sb.WriteString(fmt.Sprintf("%s {\n", cls))
+		for prop, val := range obj {
+			sb.WriteString(fmt.Sprintf("\t%s: %s;\n", prop, val))
+		}
+		sb.WriteString("}\n")
+	}
+	return sb.String()
+}
+
+var sakurapine sakura.SakuraPalette[string]
 
 func readTables() {
 	if msg != nil || blocks != nil || names != nil {
@@ -70,6 +91,30 @@ func readTables() {
 	<-doneNames
 }
 
+var fallbackCache = map[rune]string{}
+var supportsCache = map[string]map[rune]bool{}
+
+func runeFallback(r rune) string {
+	if ret, ok := fallbackCache[r]; ok {
+		return ret
+	}
+
+	st := fmt.Sprintf("%04X", int(r))
+	if len(st) >= 8 {
+		st := strings.Repeat("0", len(st)%4) + st
+		parts := []string{}
+		for i := 0; i < len(st); i += 4 {
+			parts = append(parts, st[i:i+4])
+		}
+		st = strings.Join(parts, "<br>")
+	} else {
+		st = strings.Repeat("0", len(st)%2) + st
+		st = st[:len(st)/2] + "<br>" + st[len(st)/2:]
+	}
+	fallbackCache[r] = st
+	return st
+}
+
 func renderGlyphs() {
 	if !tableMut.TryLock() {
 		return
@@ -78,21 +123,21 @@ func renderGlyphs() {
 	rows := tableWidget.RowCount()
 	sheetN := tableScroller.Value() - (rows / 3)
 	w := tableWidget.ColumnWidth(0)
-	px := max(int(float64(w)*0.6), 4)
-	font := qt6.NewQFont2(fontBox.CurrentFont().Family())
-	font.SetPixelSize(px)
-	rawFont := qt6.QRawFont_FromFont(font)
-	normalPalette := tableWidget.Palette()
-	inversePalette := qt6.NewQPalette()
-	inversePalette.SetColor2(qt6.QPalette__Text, normalPalette.ColorWithCr(qt6.QPalette__Link))
-	inversePalette.SetColor2(qt6.QPalette__Base, normalPalette.ColorWithCr(qt6.QPalette__Text))
+
+	curCell := tableWidget.CurrentIndex()
+	curR, curC := curCell.Row(), curCell.Column()
 
 	for idx := range rows {
 		tableWidget.SetRowHeight(idx, w)
-		if idx < rows/3 {
-			continue
-		}
+	}
 
+	cache := supportsCache[fontPair.Raw.FamilyName()]
+	if cache == nil {
+		cache = map[rune]bool{}
+		supportsCache[fontPair.Raw.FamilyName()] = cache
+	}
+
+	for idx := rows / 3; idx <= rows/3*2; idx++ {
 		item := tableWidget.VerticalHeaderItem(idx)
 		text := fmt.Sprintf("%03X_", idx+sheetN)
 		if item == nil {
@@ -106,48 +151,72 @@ func renderGlyphs() {
 			char := rune(16*(sheetN+idx) + col)
 			cell := tableWidget.CellWidget(idx, col)
 			var label *qt6.QLabel
+			var targetFont *qt6.QFont
+
 			if cell == nil {
 				label = qt6.NewQLabel2()
-				label.SetFont(font)
+				label.SetFont(fontPair.Real)
 				label.SetAlignment(qt6.AlignCenter)
 				cell = label.QWidget
 				tableWidget.SetCellWidget(idx, col, label.QWidget)
 			} else {
 				label = qt6.UnsafeNewQLabel(cell.Metacast("QLabel"))
-				label.SetFont(font)
 			}
 
-			var targetPalette *qt6.QPalette
-			if rawFont.SupportsCharacter(uint(char)) {
-				label.SetText(string(char))
-				targetPalette = normalPalette
-				label.SetPalette(normalPalette)
-			} else {
-				st := fmt.Sprintf("%04X", int(char))
-				if len(st) >= 8 {
-					st := strings.Repeat("0", len(st)%4) + st
-					parts := []string{}
-					for i := 0; i < len(st); i += 4 {
-						parts = append(parts, st[i:i+4])
-					}
-					st = strings.Join(parts, "<br>")
-				} else {
-					st = strings.Repeat("0", len(st)%2) + st
-					st = st[:len(st)/2] + "<br>" + st[len(st)/2:]
-				}
-				label.SetText(st)
-				label.SetFont(tableWidget.Font())
-				targetPalette = inversePalette
+			if _, ok := cache[char]; !ok {
+				cache[char] = fontPair.Raw.SupportsCharacter(uint(char))
 			}
-			label.SetPalette(targetPalette)
-			cell.SetPalette(targetPalette)
+
+			st := string(char)
+			if cache[char] {
+				targetFont = fontPair.Real
+			} else {
+				st = runeFallback(char)
+				targetFont = tableWidget.Font()
+			}
+
+			p := label.Palette()
+			if col == curC && idx == curR {
+				p.SetColor2(label.BackgroundRole(), qt6.NewQColor6("yellow"))
+				label.SetPalette(p)
+				fmt.Printf("Selected: (%d, %d)\n", idx, col)
+				st = fmt.Sprintf("<font color=\"%s\"><b>%s</b></font>", sakurapine.Layer.Base, st)
+			} else {
+				st = fmt.Sprintf("<font color='%s'>%s</font>", sakurapine.Text.Normal, st)
+			}
+
+			label.SetText(st)
+			if s, t := label.Font(), targetFont; s.PixelSize() != t.PixelSize() || s.Family() != t.Family() {
+				label.SetFont(t)
+			}
 		}
 	}
 	tableMut.Unlock()
 }
 
+func UpdateRealFont() {
+	w := tableWidget.ColumnWidth(0)
+	px := max(int(float64(w)*0.6), 4)
+	setFont := qt6.NewQFont2(fontBox.CurrentFont().Family())
+	setFont.SetPixelSize(px)
+	rawFont := qt6.QRawFont_FromFont(setFont)
+	fontPair = FontPair{rawFont, setFont}
+	for r := range tableWidget.RowCount() {
+		for c := range tableWidget.ColumnCount() {
+			cell := tableWidget.CellWidget(r, c)
+			if cell != nil {
+				cell.SetFont(setFont)
+			}
+		}
+	}
+}
+
 func main() {
 	fmt.Println("hi")
+	swatch := sakura.MapSwatch(sakura.Sakura.Parse(), func(c uint) string {
+		return fmt.Sprintf("#%06x", c)
+	})
+
 	qt6.NewQApplication(os.Args)
 	defer qt6.QApplication_Exec()
 
@@ -157,6 +226,26 @@ func main() {
 
 	viewport := qt6.NewQWidget(nil)
 	layout := qt6.NewQVBoxLayout(viewport)
+
+	c := viewport.Palette().ColorWithCr(qt6.QPalette__WindowText)
+	rgb := sakura.RGB{}.FromHexInt(c.Rgb())
+	sum := (rgb.R + rgb.B + rgb.G) / 3
+	if sum < 128 {
+		sakurapine = swatch.Dawn
+	} else {
+		sakurapine = swatch.Main
+	}
+
+	window.SetStyleSheet(makeStyleSheet(map[string]map[string]string{
+		"QMainWindow": {
+			"background-color": sakurapine.Layer.Base,
+			"color":            sakurapine.Text.Normal,
+		},
+		"QTableWidget": {
+			"selection-color":            sakurapine.Layer.Base,
+			"selection-background-color": sakurapine.Paint.Rose,
+		},
+	}))
 
 	headWidget := qt6.NewQWidget(nil)
 	headLayout := qt6.NewQHBoxLayout(headWidget)
@@ -178,7 +267,6 @@ func main() {
 	tableWidget = qt6.NewQTableWidget(nil)
 	tableWidget.HorizontalHeader().SetSectionResizeMode(qt6.QHeaderView__Fixed)
 	tableWidget.VerticalHeader().SetSectionResizeMode(qt6.QHeaderView__Fixed)
-	tableWidget.SetHorizontalScrollBarPolicy(qt6.ScrollBarAlwaysOff)
 	tableWidget.SetVerticalScrollBarPolicy(qt6.ScrollBarAlwaysOff)
 	tableScroller = qt6.NewQScrollBar2()
 
@@ -192,11 +280,7 @@ func main() {
 	layout.AddWidget(bodyWidget)
 
 	fontBox.OnCurrentFontChanged(func(font *qt6.QFont) {
-		rawFont := qt6.QRawFont_FromFont(font)
-
-		fmt.Println("Font changed to", rawFont.FamilyName())
-		fmt.Println()
-		renderGlyphs()
+		UpdateRealFont()
 	})
 
 	window.OnShowEvent(func(_ func(_ *qt6.QShowEvent), evt *qt6.QShowEvent) {
@@ -210,16 +294,23 @@ func main() {
 			mainthread.Wait(func() {
 				renderGlyphs()
 				tableScroller.SetMaximum(int(blocks[len(blocks)-1].End) / 16)
+				tableScroller.SetValue(0)
 			})
 		}()
 	})
 
-	tableWidget.OnResizeEvent(func(_ func(_ *qt6.QResizeEvent), evt *qt6.QResizeEvent) {
-		tbl_w := contentSize(tableWidget) - 7 -
-			contentSize(tableWidget.VerticalHeader())
+	autoSize := true
+	col_w := 0
 
-		excess := 16 - (tbl_w % 16)
-		col_w := max(tbl_w/16, 4)
+	resizeGlyphs := func() {
+		excess := 16
+		if autoSize {
+			tbl_w := contentSize(tableWidget) - 8 -
+				contentSize(tableWidget.VerticalHeader())
+			col_w = max(tbl_w/16, 4)
+			excess -= (tbl_w % 16)
+		}
+
 		for column := range tableWidget.ColumnCount() {
 			if column >= excess {
 				tableWidget.SetColumnWidth(column, col_w+1)
@@ -229,7 +320,12 @@ func main() {
 		}
 		tableWidget.SetRowCount((tableWidget.Size().Height() / col_w) * 3)
 		tableWidget.VerticalScrollBar().SetValue(tableWidget.RowCount() / 3)
+		UpdateRealFont()
 		renderGlyphs()
+	}
+
+	tableWidget.OnResizeEvent(func(_ func(_ *qt6.QResizeEvent), evt *qt6.QResizeEvent) {
+		resizeGlyphs()
 	})
 
 	tableScroller.OnValueChanged(func(value int) {
@@ -250,6 +346,7 @@ func main() {
 		tableScroller.SetValue(sheetNew)
 		top := tableWidget.RowCount() / 3
 		tableWidget.VerticalScrollBar().SetValue(top)
+		super(dx, 0)
 	})
 
 	tableWidget.OnKeyPressEvent(func(super func(evt *qt6.QKeyEvent), evt *qt6.QKeyEvent) {
@@ -257,31 +354,54 @@ func main() {
 		top := tableWidget.RowCount() / 3
 
 		dy := top
-		if evt.Modifiers()&qt6.ControlModifier > 0 {
+		mods := evt.Modifiers()
+		if mods&qt6.ControlModifier > 0 {
 			dy = 0x100
 		}
-		switch evt.Key() {
-		case int(qt6.Key_PageDown):
+		switch qt6.Key(evt.Key()) {
+		case qt6.Key_PageDown:
 			tableScroller.SetValue(v + dy)
-		case int(qt6.Key_PageUp):
+		case qt6.Key_PageUp:
 			tableScroller.SetValue(v - dy)
-		case int(qt6.Key_Down):
+		case qt6.Key_Down:
 			if tableWidget.CurrentRow() >= (top-1)*2 {
 				tableScroller.SetValue(v + 1)
 				evt.Ignore()
 			} else {
 				super(evt)
 			}
-		case int(qt6.Key_Up):
+		case qt6.Key_Up:
 			if tableWidget.CurrentRow() <= top {
 				tableScroller.SetValue(v - 1)
 				evt.Ignore()
 			} else {
 				super(evt)
 			}
+		case qt6.Key_Equal:
+			if mods&qt6.ControlModifier > 0 {
+				autoSize = false
+				col_w += 1
+				resizeGlyphs()
+			}
+		case qt6.Key_Minus:
+			if mods&qt6.ControlModifier > 0 {
+				autoSize = false
+				col_w = max(col_w-1, 4)
+				resizeGlyphs()
+			}
+		case qt6.Key_0:
+			if mods&qt6.ControlModifier > 0 {
+				autoSize = true
+				resizeGlyphs()
+			}
+
 		default:
 			super(evt)
 		}
+	})
+
+	tableWidget.OnCurrentCellChanged(func(_, _, _, _ int) {
+		renderGlyphs()
 	})
 
 	window.SetCentralWidget(viewport)
