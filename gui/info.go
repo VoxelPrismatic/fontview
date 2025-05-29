@@ -5,6 +5,7 @@ import (
 	"fontview/tables"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unsafe"
@@ -62,8 +63,7 @@ var (
 func MakeInfo() *qt6.QDockWidget {
 	infoWidget = qt6.NewQWidget2()
 	infoLayout = qt6.NewQBoxLayout2(qt6.QBoxLayout__Down, infoWidget)
-	infoPanel = qt6.NewQDockWidget2("Glyph Name")
-	infoPanel.SetWidget(infoWidget)
+	infoPanel = qt6.NewQDockWidget2("Glyph")
 
 	infoPanel.SetAllowedAreas(
 		qt6.BottomDockWidgetArea |
@@ -87,6 +87,16 @@ func MakeInfo() *qt6.QDockWidget {
 	})
 	timer.SetInterval(100)
 	timer.Start(100)
+
+	// infoPanel.OnResizeEvent(func(super func(event *qt6.QResizeEvent), event *qt6.QResizeEvent) {
+	// 	scrollArea.SetFixedSize(event.Size())
+	// })
+
+	scrollArea := qt6.NewQScrollArea2()
+	scrollArea.SetWidgetResizable(true)
+	scrollArea.SetWidget(infoWidget)
+	infoPanel.SetWidget(scrollArea.QWidget)
+
 	return infoPanel
 }
 
@@ -145,61 +155,49 @@ func updateInfo() {
 	updateInfo_RawBlock(*node)
 }
 
+func make_Label(label string) *qt6.QLabel {
+	ret := qt6.NewQLabel3(label)
+	ret.SetWordWrap(true)
+	ret.SetAlignment(qt6.AlignVCenter | qt6.AlignRight)
+	ret.SetTextInteractionFlags(qt6.TextSelectableByMouse)
+	return ret
+}
+
 func makeInfo_Details() *qt6.QWidget {
 	gridWidget := qt6.NewQWidget2()
 	grid := qt6.NewQGridLayout(gridWidget)
+	grid.SetContentsMargins(0, 0, 0, 0)
 	info_Details.Init("Details", gridWidget)
 
 	item := qt6.NewQLabel3("<b>Name</b>")
-	// item.SetStyleSheet("background-color:#ffffff")
+	info_NameLabel = make_Label("Name")
 	grid.AddWidget4(item.QWidget, 0, 0, qt6.AlignLeft)
-
-	policy := qt6.NewQSizePolicy()
-	policy.SetHorizontalStretch(15)
-	policy.SetHorizontalPolicy(qt6.QSizePolicy__Expanding)
-
-	info_NameLabel = qt6.NewQLabel3("Name")
-	grid.AddWidget4(info_NameLabel.QWidget, 0, 1, qt6.AlignLeft)
-	info_NameLabel.SetWordWrap(true)
-	info_NameLabel.SetAlignment(qt6.AlignRight)
-	info_NameLabel.SetTextInteractionFlags(qt6.TextSelectableByMouse)
-	info_NameLabel.SetSizePolicy(*policy)
-	// info_NameLabel.SetStyleSheet("background-color:#ffffff")
+	grid.AddWidget4(info_NameLabel.QWidget, 0, 1, qt6.AlignRight)
 
 	item = qt6.NewQLabel3("<b>Block</b>")
-	// item.SetStyleSheet("background-color:#ffffff")
+	info_BlockLabel = make_Label("Block")
 	grid.AddWidget4(item.QWidget, 1, 0, qt6.AlignLeft)
-
-	info_BlockLabel = qt6.NewQLabel3("Block")
-	grid.AddWidget4(info_BlockLabel.QWidget, 1, 1, qt6.AlignLeft)
-	info_BlockLabel.SetWordWrap(true)
-	info_BlockLabel.SetAlignment(qt6.AlignRight)
-	info_BlockLabel.SetTextInteractionFlags(qt6.TextSelectableByMouse)
-	info_BlockLabel.SetSizePolicy(*policy)
-	// info_BlockLabel.SetStyleSheet("background-color:#ffffff")
+	grid.AddWidget4(info_BlockLabel.QWidget, 1, 1, qt6.AlignRight)
 
 	item = qt6.NewQLabel3("<b>Category</b>")
-	// item.SetStyleSheet("background-color:#ffffff")
+	info_CategoryLabel = make_Label("Category")
 	grid.AddWidget4(item.QWidget, 2, 0, qt6.AlignLeft)
+	grid.AddWidget4(info_CategoryLabel.QWidget, 2, 1, qt6.AlignRight)
 
-	info_CategoryLabel = qt6.NewQLabel3("Category")
-	grid.AddWidget4(info_CategoryLabel.QWidget, 2, 1, qt6.AlignLeft)
-	info_CategoryLabel.SetWordWrap(true)
-	info_CategoryLabel.SetAlignment(qt6.AlignRight)
-	info_CategoryLabel.SetTextInteractionFlags(qt6.TextSelectableByMouse)
-	info_CategoryLabel.SetSizePolicy(*policy)
-	// info_CategoryLabel.SetStyleSheet("background-color:#ffffff")
+	info_CodeWidget := qt6.NewQWidget2()
+	info_CodeLayout := qt6.NewQHBoxLayout(info_CodeWidget)
+	info_CodeLayout.SetContentsMargins(0, 0, 0, 0)
 
 	info_CodeSelector = qt6.NewQComboBox2()
-	grid.AddWidget4(info_CodeSelector.QWidget, 3, 0, qt6.AlignLeft)
+	info_CodeCopy := qt6.NewQPushButton2()
+	info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("edit-copy"))
+	info_CodeCopy.SetToolTip("Copy")
+	info_CodeLabel = make_Label("Code point")
 
-	info_CodeLabel = qt6.NewQLabel3("Code point")
-	grid.AddWidget4(info_CodeLabel.QWidget, 3, 1, qt6.AlignLeft)
-	info_CodeLabel.SetWordWrap(true)
-	info_CodeLabel.SetAlignment(qt6.AlignRight)
-	info_CodeLabel.SetTextInteractionFlags(qt6.TextSelectableByMouse)
-	info_CodeLabel.SetSizePolicy(*policy)
-	// info_CodeLabel.SetStyleSheet("background-color:#ffffff")
+	info_CodeLayout.AddWidget(info_CodeSelector.QWidget)
+	info_CodeLayout.AddWidget(info_CodeCopy.QWidget)
+	grid.AddWidget4(info_CodeWidget, 3, 0, qt6.AlignLeft)
+	grid.AddWidget4(info_CodeLabel.QWidget, 3, 1, qt6.AlignRight)
 
 	keys := []string{}
 	for key := range tables.CodeEncoder {
@@ -212,10 +210,25 @@ func makeInfo_Details() *qt6.QWidget {
 		formatted := tables.CodeEncoder[selected](curNode.Point)
 		info_CodeLabel.SetText(formatted)
 	})
-	// gridWidget.SetStyleSheet("background-color:#00ff00")
-	fmt.Println(grid.ColumnCount())
-	fmt.Println(grid.RowCount())
-	grid.SetColumnStretch(1, 10)
+	gridWidget.OnResizeEvent(func(super func(event *qt6.QResizeEvent), event *qt6.QResizeEvent) {
+		w := event.Size().Width() -
+			info_CodeSelector.Size().Width() -
+			info_CodeCopy.Size().Width() - 32
+		info_NameLabel.SetMinimumWidth(w)
+		info_BlockLabel.SetMinimumWidth(w)
+		info_CategoryLabel.SetMinimumWidth(w)
+		info_CodeLabel.SetMinimumWidth(w)
+	})
+
+	checkTimer := qt6.NewQTimer()
+	checkTimer.OnTimerEvent(func(super func(param1 *qt6.QTimerEvent), param1 *qt6.QTimerEvent) {
+		checkTimer.Stop()
+		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("edit-copy"))
+	})
+	info_CodeCopy.OnClicked(func() {
+		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("checkbox"))
+		checkTimer.Start(1000)
+	})
 
 	return info_Details.group.QWidget
 }
@@ -287,7 +300,8 @@ func updateInfo_Preview(node tables.Node) {
 func makeInfo_AltNames() *qt6.QWidget {
 	label := info_AltNames.Init("Alternate Names", qt6.NewQLabel2())
 	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse)
+	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
+	label.OnLinkActivated(onLink)
 	return info_AltNames.group.QWidget
 }
 
@@ -298,7 +312,8 @@ func updateInfo_AltNames(node tables.Node) {
 func makeInfo_Remarks() *qt6.QWidget {
 	label := info_Remarks.Init("Remarks", qt6.NewQLabel2())
 	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse)
+	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
+	label.OnLinkActivated(onLink)
 	return info_Remarks.group.QWidget
 }
 
@@ -309,7 +324,8 @@ func updateInfo_Remarks(node tables.Node) {
 func makeInfo_Refs() *qt6.QWidget {
 	label := info_Refs.Init("References", qt6.NewQLabel2())
 	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse)
+	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
+	label.OnLinkActivated(onLink)
 	return info_Refs.group.QWidget
 }
 
@@ -320,7 +336,8 @@ func updateInfo_Refs(node tables.Node) {
 func makeInfo_Approx() *qt6.QWidget {
 	label := info_Approx.Init("Approximates", qt6.NewQLabel2())
 	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse)
+	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
+	label.OnLinkActivated(onLink)
 	return info_Approx.group.QWidget
 }
 
@@ -331,7 +348,8 @@ func updateInfo_Approx(node tables.Node) {
 func makeInfo_Equiv() *qt6.QWidget {
 	label := info_Equiv.Init("Equivalents", qt6.NewQLabel2())
 	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse)
+	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
+	label.OnLinkActivated(onLink)
 	return info_Equiv.group.QWidget
 }
 
@@ -340,16 +358,27 @@ func updateInfo_Equiv(node tables.Node) {
 }
 
 func makeInfo_RawBlock() *qt6.QWidget {
-	label := info_RawBlock.Init("Raw Block Data", qt6.NewQLabel2())
+	label := info_RawBlock.Init("Raw Node Data", qt6.NewQLabel2())
 	label.SetAlignment(qt6.AlignTop | qt6.AlignLeft)
 	label.SetFont(monoFont)
 	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse)
+	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
+	label.OnLinkActivated(onLink)
 	return info_RawBlock.group.QWidget
 }
 
 func updateInfo_RawBlock(node tables.Node) {
-	info_RawBlock.widget.SetText(node.Raw)
+	s := link.ReplaceAllStringFunc(node.Raw, func(u string) string {
+		i, err := strconv.ParseInt(u, 16, 64)
+		if err != nil {
+			panic(err)
+		}
+
+		return fmt.Sprintf("<a href=\"%d\">%s</a>", i, u)
+	})
+	s = strings.ReplaceAll(s, "\n\t", "<br>"+strings.Repeat("&nbsp;", len(node.Code)+1))
+	s = strings.ReplaceAll(s, "\n", "<br>")
+	info_RawBlock.widget.SetText(s)
 }
 
 var link = regexp.MustCompile(`\b([A-F0-9]{4,})\b`)
@@ -372,11 +401,27 @@ func updateInfo_Generic(list []string, target *qt6.QLabel) {
 			} else {
 				title = caser.String(names[u].Name)
 			}
+			i, err := strconv.ParseInt(u, 16, 64)
+			if err != nil {
+				panic(err)
+			}
 
-			return fmt.Sprintf("<a href=\"u:%s\">%s: %s</a>", u, u, title)
+			return fmt.Sprintf("<a href=\"%d\">%s: %s</a>", i, u, title)
 		})
 		entries[i] = fmt.Sprintf("<li>%s</li>", s)
 	}
 
 	target.SetText(fmt.Sprintf("<ul>%s</ul>", strings.Join(entries, "")))
+}
+
+func onLink(link string) {
+	point, err := strconv.Atoi(link)
+	if err != nil {
+		panic(err)
+	}
+	third := tableWidget.RowCount() / 3
+	off := tableWidget.CurrentRow() - third
+	row := (point-point%16)/16 - off
+	tableScroller.SetValue(row)
+	tableWidget.SetCurrentCell(off+third, point%16)
 }

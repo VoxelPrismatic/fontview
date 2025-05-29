@@ -125,6 +125,8 @@ func resizeGlyphs() {
 			tableWidget.SetColumnWidth(column, tbl_col_w)
 		}
 	}
+	selectedCache = FontCache[Render]{}
+	labelCache = FontCache[Render]{}
 	tableWidget.SetRowCount((tableWidget.Size().Height() / tbl_col_w) * 3)
 	tableWidget.VerticalScrollBar().SetValue(tableWidget.RowCount() / 3)
 	UpdateRealFont()

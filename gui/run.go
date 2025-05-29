@@ -85,5 +85,6 @@ func boot() {
 		renderGlyphs()
 		tableScroller.SetMaximum(int(blocks[len(blocks)-1].End) / 16)
 		tableScroller.SetValue(0)
+		onLink("0")
 	})
 }
