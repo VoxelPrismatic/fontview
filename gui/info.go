@@ -298,6 +298,9 @@ func makeInfo_Preview() *qt6.QWidget {
 	label.SetAlignment(qt6.AlignCenter)
 	label.SetWordWrap(true)
 	label.SetTextInteractionFlags(qt6.TextSelectableByMouse)
+	label.OnMousePressEvent(func(super func(ev *qt6.QMouseEvent), ev *qt6.QMouseEvent) {
+		copySym()
+	})
 	return info_Preview.group.QWidget
 }
 

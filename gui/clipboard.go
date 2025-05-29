@@ -45,3 +45,17 @@ func copyRune() error {
 	cmd := exec.Command("sh", "-c", fmt.Sprintf(copyCmd, lines[0]))
 	return cmd.Run()
 }
+
+func copySym() error {
+	if copyErr != nil {
+		return copyErr
+	}
+
+	lines := strings.Split(info_Preview.widget.Text(), "\n")
+	if len(lines) == 0 {
+		return fmt.Errorf("nothing to copy")
+	}
+
+	cmd := exec.Command("sh", "-c", fmt.Sprintf(copyCmd, lines[0]))
+	return cmd.Run()
+}
