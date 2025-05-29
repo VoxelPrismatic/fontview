@@ -8,7 +8,7 @@ A tool to view every damn glyph a font contains, along with plenty of useful Uni
 - Sorted in order
   - (this is the main reason I started this project)
 - Unicode details
-- HTML Named entities `&int;` for `∫`
+- HTML Named entities, like `&int;` for `∫`
 - Plenty of copy formats
   - Raise an issue for more formats
 - Massive preview
