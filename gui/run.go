@@ -61,8 +61,8 @@ func Launch() {
 	}))
 
 	layout.AddWidget(MakeHead())
-
 	layout.AddWidget(MakeTable())
+	window.AddDockWidget(qt6.RightDockWidgetArea, MakeInfo())
 
 	window.OnShowEvent(func(_ func(_ *qt6.QShowEvent), evt *qt6.QShowEvent) {
 		go boot()

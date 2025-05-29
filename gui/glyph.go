@@ -21,7 +21,7 @@ var (
 	labelCache      = FontCache[Render]{}
 	fallbackCache   = map[rune]string{}
 	supportsCache   = FontCache[bool]{}
-	maxGlyphCache   = map[string]uint64{}
+	maxGlyphCache   = map[string]rune{}
 	maxGlyphSuccess = map[string]bool{}
 	maxGlyphMut     sync.Mutex
 )
@@ -41,6 +41,8 @@ func maxGlyph() rune {
 		if fontPair.Raw.SupportsCharacter(uint(code)) {
 			maxGlyphMut.Lock()
 			maxGlyphSuccess[fam] = true
+			fmt.Printf("%s: %d\n", fam, code)
+			maxGlyphCache[fam] = code
 			maxGlyphMut.Unlock()
 			return rune(code)
 		}
@@ -48,10 +50,10 @@ func maxGlyph() rune {
 			maxGlyphMut.Lock()
 			maxGlyphCache[fam] = code
 			maxGlyphMut.Unlock()
-			return -1
+			return 0
 		}
 	}
-	return -1
+	return 0
 }
 
 func runeSupported(r rune) bool {

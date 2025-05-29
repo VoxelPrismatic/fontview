@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"fontview/tables"
 	"sync"
 
 	"github.com/mappu/miqt/qt6"
@@ -74,7 +75,6 @@ func renderGlyph(char rune, idx, col, curR, curC int) {
 	if label.StyleSheet() != render.Style {
 		label.SetStyleSheet(render.Style)
 	}
-
 }
 
 func UpdateRealFont() {
@@ -86,24 +86,25 @@ func UpdateRealFont() {
 	fontPair = FontPair{rawFont, setFont}
 	renderGlyphs()
 	go func() {
-		var maxRune rune
+		var maxRune uint
 		fam := fontPair.Raw.FamilyName()
 		maxGlyphMut.Lock()
 		done := maxGlyphSuccess[fam]
 		maxGlyphMut.Unlock()
 
 		if !done {
-			maxRune = maxGlyph()
+			maxRune = tables.RuneToUint(maxGlyph())
 		} else {
 			maxGlyphMut.Lock()
-			maxRune = rune(maxGlyphCache[fam])
+			maxRune = tables.RuneToUint(maxGlyphCache[fam])
 			maxGlyphMut.Unlock()
 		}
-		if maxRune <= 0 {
+		if maxRune == 0 {
 			return
 		}
-		maxRune += maxRune % 16
 
+		maxRune += maxRune % 16
+		fmt.Printf("lines: %x\n", int(maxRune/16))
 		tableScroller.SetMaximum(int(maxRune / 16))
 	}()
 }

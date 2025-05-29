@@ -16,7 +16,7 @@ type AltForm struct {
 }
 
 type Node struct {
-	Point    uint64
+	Point    rune
 	Code     string
 	Name     string
 	AltNames []string
@@ -31,8 +31,8 @@ type Node struct {
 
 type Block struct {
 	Name  string
-	Start uint64
-	End   uint64
+	Start rune
+	End   rune
 	Nodes []*Node
 }
 
@@ -90,34 +90,36 @@ func writeLines(path string, data []byte) {
 	}
 }
 
-func getNamesList() []string {
-	stat, err := os.Stat("data/NamesList.txt")
-	if err != nil && time.Now().Sub(stat.ModTime()).Hours() < 24*30 {
+func getCached(file, url string) []string {
+	stat, err := os.Stat(file)
+
+	if err == nil && time.Now().Sub(stat.ModTime()).Hours() < 24*30 {
 		// Cache monthly
-		return readLines("data/NamesList.txt")
-	}
-	data, err := fetchData("https://www.unicode.org/Public/UCD/latest/ucd/NamesList.txt")
-	if err != nil {
-		return readLines("data/NamesList.txt")
+		return readLines(file)
 	}
 
-	writeLines("data/NamesList.txt", data)
+	data, err := fetchData(url)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		return readLines(file)
+	}
+
+	writeLines(file, data)
 	return strings.Split(string(data), "\n")
 }
 
-func getBlocks() []string {
-	stat, err := os.Stat("data/Blocks.txt")
-	if err != nil && time.Now().Sub(stat.ModTime()).Hours() < 24*30 {
-		// Cache monthly
-		return readLines("data/Blocks.txt")
-	}
-	data, err := fetchData("https://www.unicode.org/Public/UCD/latest/ucd/Blocks.txt")
-	if err != nil {
-		return readLines("data/Blocks.txt")
-	}
+func getNamesList() []string {
+	return getCached(
+		"data/NamesList.txt",
+		"https://www.unicode.org/Public/UCD/latest/ucd/NamesList.txt",
+	)
+}
 
-	writeLines("data/Blocks.txt", data)
-	return strings.Split(string(data), "\n")
+func getBlocks() []string {
+	return getCached(
+		"data/Blocks.txt",
+		"https://www.unicode.org/Public/UCD/latest/ucd/Blocks.txt",
+	)
 }
 
 var _blocks []Block
@@ -159,8 +161,8 @@ func ParseBlocks() []Block {
 
 		blocks = append(blocks, Block{
 			Name:  name,
-			Start: start,
-			End:   end,
+			Start: rune(start),
+			End:   rune(end),
 		})
 	}
 
@@ -174,7 +176,7 @@ func ParseBlocks() []Block {
 	return blocks
 }
 
-func newNode(blocks []Block, line string) Node {
+func newNode(blocks []Block, line string) *Node {
 	parts := strings.Split(line, "\t")
 	if len(parts) != 2 {
 		panic("Invalid line: " + line)
@@ -185,23 +187,23 @@ func newNode(blocks []Block, line string) Node {
 		panic("Invalid point: " + parts[0])
 	}
 	ret := Node{
-		Point: point,
+		Point: rune(point),
 		Code:  parts[0],
 		Name:  parts[1],
 	}
 	for _, block := range blocks {
-		if point >= block.Start && point <= block.End {
+		if rune(point) >= block.Start && rune(point) <= block.End {
 			ret.Block = block
 			block.Nodes = append(block.Nodes, &ret)
 			break
 		}
 	}
-	return ret
+	return &ret
 }
 
-func ParseNamesList() map[string]Node {
+func ParseNamesList() map[string]*Node {
 	lines := getNamesList()
-	names := make(map[string]Node)
+	names := make(map[string]*Node)
 
 	blocks := ParseBlocks()
 
@@ -210,7 +212,7 @@ func ParseNamesList() map[string]Node {
 		lines = lines[1:]
 	}
 
-	var lastNode Node
+	var lastNode *Node
 
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
@@ -224,6 +226,7 @@ func ParseNamesList() map[string]Node {
 
 		if !strings.HasPrefix(line, "\t") {
 			lastNode = newNode(blocks, line)
+			lastNode.Raw += line + "\n"
 			names[lastNode.Code] = lastNode
 			continue
 		}

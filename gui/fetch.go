@@ -11,7 +11,7 @@ import (
 var (
 	blocks    []tables.Block
 	blocksMut sync.Mutex
-	names     map[string]tables.Node
+	names     map[string]*tables.Node
 	namesMut  sync.Mutex
 	msg       *qt6.QProgressDialog
 )
@@ -27,7 +27,7 @@ func readTables() {
 		msg.SetLabelText("Loading Unicode Tables...")
 		msg.SetWindowModality(qt6.WindowModal)
 		msg.SetMinimum(0)
-		msg.SetMaximum(2)
+		msg.SetMaximum(3)
 		msg.SetValue(0)
 		msg.Show()
 	})
@@ -54,6 +54,15 @@ func readTables() {
 		doneNames <- true
 	}()
 
+	doneHtml := make(chan bool)
+	go func() {
+		tables.ParseHTMLList()
+		mainthread.Wait(func() { msg.SetValue(msg.Value() + 1) })
+
+		doneHtml <- true
+	}()
+
 	<-doneBlocks
 	<-doneNames
+	<-doneHtml
 }
