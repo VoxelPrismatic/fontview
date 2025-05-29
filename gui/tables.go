@@ -104,7 +104,6 @@ func UpdateRealFont() {
 		}
 
 		maxRune += maxRune % 16
-		fmt.Printf("lines: %x\n", int(maxRune/16))
 		tableScroller.SetMaximum(int(maxRune / 16))
 	}()
 }
@@ -154,6 +153,9 @@ func MakeTable() *qt6.QWidget {
 	tableScroller.OnValueChanged(tbl_ScrollChanged)
 	tableWidget.OnScrollContentsBy(tbl_ScrollEvt)
 	tableWidget.OnCurrentCellChanged(tbl_CellChanged)
+
+	tableWidget.SetSelectionBehavior(qt6.QAbstractItemView__SelectItems)
+	tableWidget.SetSelectionMode(qt6.QAbstractItemView__SingleSelection)
 
 	return bodyWidget
 }

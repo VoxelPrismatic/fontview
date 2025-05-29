@@ -190,8 +190,14 @@ func makeInfo_Details() *qt6.QWidget {
 
 	info_CodeSelector = qt6.NewQComboBox2()
 	info_CodeCopy := qt6.NewQPushButton2()
-	info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("edit-copy"))
-	info_CodeCopy.SetToolTip("Copy")
+	if copyErr != nil {
+		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("apport"))
+		info_CodeCopy.SetToolTip(copyErr.Error())
+		info_CodeCopy.SetDisabled(true)
+	} else {
+		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("edit-copy"))
+		info_CodeCopy.SetToolTip(copyCmd)
+	}
 	info_CodeLabel = make_Label("Code point")
 
 	info_CodeLayout.AddWidget(info_CodeSelector.QWidget)
@@ -226,8 +232,15 @@ func makeInfo_Details() *qt6.QWidget {
 		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("edit-copy"))
 	})
 	info_CodeCopy.OnClicked(func() {
-		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("checkbox"))
-		checkTimer.Start(1000)
+		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("appointment-recurring"))
+		err := copyRune()
+		if err != nil {
+			info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("apport"))
+			info_CodeCopy.SetToolTip(err.Error())
+		} else {
+			info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("checkbox"))
+			checkTimer.Start(1000)
+		}
 	})
 
 	return info_Details.group.QWidget
@@ -368,7 +381,8 @@ func makeInfo_RawBlock() *qt6.QWidget {
 }
 
 func updateInfo_RawBlock(node tables.Node) {
-	s := link.ReplaceAllStringFunc(node.Raw, func(u string) string {
+	s := strings.ReplaceAll(node.Raw, "<", "&lt;")
+	s = link.ReplaceAllStringFunc(s, func(u string) string {
 		i, err := strconv.ParseInt(u, 16, 64)
 		if err != nil {
 			panic(err)
@@ -393,6 +407,7 @@ func updateInfo_Generic(list []string, target *qt6.QLabel) {
 	target.SetAlignment(qt6.AlignLeft)
 	entries := make([]string, len(list))
 	for i, s := range list {
+		s = strings.ReplaceAll(s, "<", "&lt;")
 		s = link.ReplaceAllStringFunc(s, func(u string) string {
 			node, ok := names[u]
 			var title string
