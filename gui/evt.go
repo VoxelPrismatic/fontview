@@ -1,6 +1,10 @@
 package gui
 
-import "github.com/mappu/miqt/qt6"
+import (
+	"fmt"
+
+	"github.com/mappu/miqt/qt6"
+)
 
 var (
 	tbl_ignoreEvt = false
@@ -85,4 +89,25 @@ func tbl_ResizeEvt(_ func(_ *qt6.QResizeEvent), evt *qt6.QResizeEvent) {
 	labelCache = FontCache[Render]{}
 	selectedCache = FontCache[Render]{}
 	resizeGlyphs()
+}
+
+func btn_DirEvt(prev *[]string, fwd *[]string) {
+	l := len(*prev)
+	if l == 0 {
+		return
+	}
+
+	target := (*prev)[l-1]
+	*prev = (*prev)[:l-1]
+	*fwd = append(*fwd, fmt.Sprint(curNode.Point))
+	historyPush = false
+	onLink(target)
+}
+
+func btn_FwdEvt() {
+	btn_DirEvt(&fwdStack, &backStack)
+}
+
+func btn_BackEvt() {
+	btn_DirEvt(&backStack, &fwdStack)
 }

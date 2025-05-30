@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mappu/miqt/qt6"
@@ -29,4 +30,30 @@ func contentSize(obj Widthable) int {
 	sz := obj.Size()
 	w := sz.Width() + margins.Left() + margins.Right()
 	return w
+}
+
+var fwdStack = []string{}
+var backStack = []string{}
+var historyPush = true
+
+func onLink(link string) {
+	point, err := strconv.Atoi(link)
+	if err != nil {
+		panic(err)
+	}
+	if historyPush {
+		fwdStack = []string{}
+		backStack = append(backStack, fmt.Sprint(curNode.Point))
+	} else {
+		historyPush = true
+	}
+	fmt.Println("Back:", backStack)
+	fmt.Println("Fwd: ", fwdStack)
+	btnBack.SetDisabled(len(backStack) == 0)
+	btnFwd.SetDisabled(len(fwdStack) == 0)
+	third := tableWidget.RowCount() / 3
+	off := tableWidget.CurrentRow() - third
+	row := (point-point%16)/16 - off
+	tableScroller.SetValue(row)
+	tableWidget.SetCurrentCell(off+third, point%16)
 }

@@ -21,13 +21,10 @@ var (
 	window     *qt6.QMainWindow
 	sakurapine sakura.SakuraPalette[string]
 	monoFont   *qt6.QFont
+	icons      map[string]*qt6.QIcon
 )
 
 func Launch() {
-	swatch := sakura.MapSwatch(sakura.Sakura.Parse(), func(c uint) string {
-		return fmt.Sprintf("#%06x", c)
-	})
-
 	qt6.NewQApplication(os.Args)
 	defer qt6.QApplication_Exec()
 
@@ -37,17 +34,10 @@ func Launch() {
 	window.SetWindowTitle("Glyph Viewer")
 	window.SetMinimumSize2(360, 240)
 
+	determineTheme()
+
 	viewport := qt6.NewQWidget(nil)
 	layout := qt6.NewQVBoxLayout(viewport)
-
-	c := viewport.Palette().ColorWithCr(qt6.QPalette__WindowText)
-	rgb := sakura.RGB{}.FromHexInt(c.Rgb())
-	sum := (rgb.R + rgb.B + rgb.G) / 3
-	if sum < 128 {
-		sakurapine = swatch.Dawn
-	} else {
-		sakurapine = swatch.Main
-	}
 
 	window.SetStyleSheet(makeStyleSheet(map[string]map[string]string{
 		"QMainWindow": {
@@ -87,4 +77,30 @@ func boot() {
 		tableScroller.SetValue(0)
 		onLink("0")
 	})
+}
+
+func determineTheme() {
+	swatch := sakura.MapSwatch(sakura.Sakura.Parse(), func(c uint) string {
+		return fmt.Sprintf("#%06x", c)
+	})
+
+	c := window.Palette().ColorWithCr(qt6.QPalette__WindowText)
+	rgb := sakura.RGB{}.FromHexInt(c.Rgb())
+	sum := (rgb.R + rgb.B + rgb.G) / 3
+	if sum < 128 {
+		sakurapine = swatch.Dawn
+	} else {
+		sakurapine = swatch.Main
+	}
+
+	icons = map[string]*qt6.QIcon{}
+
+	for name, svg := range kdeIcons {
+		svg = fmt.Sprintf(svg, sakurapine.Text.Normal)
+		img := qt6.QImage_FromData5([]byte(svg), "image/svg+xml")
+		pix := qt6.QPixmap_FromImage(img)
+		ico := qt6.NewQIcon2(pix)
+		icons[name] = ico
+	}
+
 }

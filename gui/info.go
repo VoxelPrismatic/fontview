@@ -221,6 +221,7 @@ func updateList_Generic(stuff []string, target *qt6.QTreeWidgetItem) {
 		label := qt6.NewQLabel3(render_List(item))
 		label.SetWordWrap(true)
 		label.OnLinkActivated(onLink)
+		label.SetStyleSheet("background-color:#ff0000")
 		target.AddChild(child)
 		info_Tree.widget.SetItemWidget(child, 0, label.QWidget)
 	}
@@ -275,11 +276,11 @@ func makeInfo_Details() *qt6.QWidget {
 	info_CodeSelector = qt6.NewQComboBox2()
 	info_CodeCopy := qt6.NewQPushButton2()
 	if copyErr != nil {
-		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("apport"))
+		info_CodeCopy.SetIcon(icons["apport"])
 		info_CodeCopy.SetToolTip(copyErr.Error())
 		info_CodeCopy.SetDisabled(true)
 	} else {
-		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("edit-copy"))
+		info_CodeCopy.SetIcon(icons["edit-copy"])
 		info_CodeCopy.SetToolTip(copyCmd)
 	}
 	info_CodeLabel = make_Label("Code point")
@@ -313,16 +314,16 @@ func makeInfo_Details() *qt6.QWidget {
 	checkTimer := qt6.NewQTimer()
 	checkTimer.OnTimerEvent(func(super func(param1 *qt6.QTimerEvent), param1 *qt6.QTimerEvent) {
 		checkTimer.Stop()
-		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("edit-copy"))
+		info_CodeCopy.SetIcon(icons["edit-copy"])
 	})
 	info_CodeCopy.OnClicked(func() {
-		info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("appointment-recurring"))
+		info_CodeCopy.SetIcon(icons["view-refresh"])
 		err := copyRune()
 		if err != nil {
-			info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("apport"))
+			info_CodeCopy.SetIcon(icons["apport"])
 			info_CodeCopy.SetToolTip(err.Error())
 		} else {
-			info_CodeCopy.SetIcon(qt6.QIcon_FromTheme("checkbox"))
+			info_CodeCopy.SetIcon(icons["checkbox"])
 			checkTimer.Start(1000)
 		}
 	})
@@ -423,15 +424,3 @@ func updateInfo_RawBlock(node tables.Node) {
 }
 
 var link = regexp.MustCompile(`\b([A-F0-9]{4,})\b`)
-
-func onLink(link string) {
-	point, err := strconv.Atoi(link)
-	if err != nil {
-		panic(err)
-	}
-	third := tableWidget.RowCount() / 3
-	off := tableWidget.CurrentRow() - third
-	row := (point-point%16)/16 - off
-	tableScroller.SetValue(row)
-	tableWidget.SetCurrentCell(off+third, point%16)
-}
