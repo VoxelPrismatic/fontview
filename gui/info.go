@@ -221,7 +221,8 @@ func updateList_Generic(stuff []string, target *qt6.QTreeWidgetItem) {
 		label := qt6.NewQLabel3(render_List(item))
 		label.SetWordWrap(true)
 		label.OnLinkActivated(onLink)
-		label.SetStyleSheet("background-color:#ff0000")
+		label.SetTextFormat(qt6.RichText)
+		label.SetStyleSheet("padding-left: 2px;")
 		target.AddChild(child)
 		info_Tree.widget.SetItemWidget(child, 0, label.QWidget)
 	}
@@ -229,6 +230,7 @@ func updateList_Generic(stuff []string, target *qt6.QTreeWidgetItem) {
 	target.SetExpanded(true)
 }
 func render_List(s string) string {
+	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "<", "&lt;")
 	s = link.ReplaceAllStringFunc(s, func(u string) string {
 		node, ok := names[u]
@@ -243,7 +245,7 @@ func render_List(s string) string {
 			panic(err)
 		}
 
-		return fmt.Sprintf("<a href=\"%d\">%s: %s</a>", i, u, title)
+		return fmt.Sprintf("<a href=\"%d\" style=\"margin:0px;padding:0px;\">%s: %s</a>", i, u, title)
 	})
 	return s
 }
