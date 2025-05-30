@@ -40,14 +40,16 @@ var (
 	infoPanel  *qt6.QDockWidget
 	infoLayout *qt6.QBoxLayout
 
+	info_Tree     GroupBox[*qt6.QTreeWidget]
+	info_Tab      *qt6.QTabWidget
+	tree_AltNames *qt6.QTreeWidgetItem
+	tree_Remarks  *qt6.QTreeWidgetItem
+	tree_Refs     *qt6.QTreeWidgetItem
+	tree_Approx   *qt6.QTreeWidgetItem
+	tree_Equiv    *qt6.QTreeWidgetItem
+
 	info_Preview  GroupBox[*qt6.QLabel]
 	info_Details  GroupBox[*qt6.QWidget]
-	info_AltNames GroupBox[*qt6.QLabel]
-	info_AltForms GroupBox[*qt6.QTableWidget]
-	info_Remarks  GroupBox[*qt6.QLabel]
-	info_Refs     GroupBox[*qt6.QLabel]
-	info_Approx   GroupBox[*qt6.QLabel]
-	info_Equiv    GroupBox[*qt6.QLabel]
 	info_RawBlock GroupBox[*qt6.QLabel]
 
 	info_CodeSelector  *qt6.QComboBox
@@ -73,13 +75,7 @@ func MakeInfo() *qt6.QDockWidget {
 
 	infoLayout.AddWidget(makeInfo_Preview())
 	infoLayout.AddWidget(makeInfo_Details())
-	infoLayout.AddWidget(makeInfo_AltNames())
-
-	infoLayout.AddWidget(makeInfo_Remarks())
-	infoLayout.AddWidget(makeInfo_Refs())
-	infoLayout.AddWidget(makeInfo_Equiv())
-	infoLayout.AddWidget(makeInfo_Approx())
-	infoLayout.AddWidget2(makeInfo_RawBlock(), 1)
+	infoLayout.AddWidget2(makeInfo_Tab(), 1)
 
 	timer := qt6.NewQTimer()
 	timer.OnTimerEvent(func(super func(evt *qt6.QTimerEvent), evt *qt6.QTimerEvent) {
@@ -87,10 +83,6 @@ func MakeInfo() *qt6.QDockWidget {
 	})
 	timer.SetInterval(100)
 	timer.Start(100)
-
-	// infoPanel.OnResizeEvent(func(super func(event *qt6.QResizeEvent), event *qt6.QResizeEvent) {
-	// 	scrollArea.SetFixedSize(event.Size())
-	// })
 
 	scrollArea := qt6.NewQScrollArea2()
 	scrollArea.SetWidgetResizable(true)
@@ -123,6 +115,7 @@ func updateInfo() {
 				"This character is not defined by the unicode spec",
 			},
 			Block: blocks[len(blocks)-1],
+			Raw:   "<Undefined>",
 		}
 		namesMut.Lock()
 		names[node.Code] = node
@@ -146,12 +139,8 @@ func updateInfo() {
 	curNode = *node
 
 	updateInfo_Preview(*node)
+	updateInfo_List(*node)
 	updateInfo_Details(*node)
-	updateInfo_AltNames(*node)
-	updateInfo_Remarks(*node)
-	updateInfo_Refs(*node)
-	updateInfo_Approx(*node)
-	updateInfo_Equiv(*node)
 	updateInfo_RawBlock(*node)
 }
 
@@ -161,6 +150,101 @@ func make_Label(label string) *qt6.QLabel {
 	ret.SetAlignment(qt6.AlignVCenter | qt6.AlignRight)
 	ret.SetTextInteractionFlags(qt6.TextSelectableByMouse)
 	return ret
+}
+
+func makeInfo_Tab() *qt6.QWidget {
+	info_Tab = qt6.NewQTabWidget2()
+	info_Tab.AddTab(makeInfo_List(), "Metadata")
+	info_Tab.AddTab(makeInfo_RawBlock(), "Raw Data")
+	info_Tab.SetTabPosition(qt6.QTabWidget__South)
+	info_Tab.SetDocumentMode(true)
+	return info_Tab.QWidget
+}
+
+func makeInfo_List() *qt6.QWidget {
+	tree := info_Tree.Init("Unicode Metadata", qt6.NewQTreeWidget2())
+	tree_AltNames = qt6.NewQTreeWidgetItem()
+	tree_AltNames.SetText(0, "Alternate Names")
+	tree_Approx = qt6.NewQTreeWidgetItem()
+	tree_Approx.SetText(0, "Alternates")
+	tree_Equiv = qt6.NewQTreeWidgetItem()
+	tree_Equiv.SetText(0, "Equivalents")
+	tree_Refs = qt6.NewQTreeWidgetItem()
+	tree_Refs.SetText(0, "References")
+	tree_Remarks = qt6.NewQTreeWidgetItem()
+	tree_Remarks.SetText(0, "Remarks")
+	tree.SetColumnCount(2)
+	tree.SetHeaderHidden(true)
+
+	tree.AddTopLevelItems([]*qt6.QTreeWidgetItem{
+		tree_AltNames,
+		tree_Remarks,
+		tree_Refs,
+		tree_Equiv,
+		tree_Approx,
+	})
+
+	tree.OnResizeEvent(func(super func(event *qt6.QResizeEvent), event *qt6.QResizeEvent) {
+		tree.SetColumnWidth(0, event.Size().Width()-32)
+		tree.SetColumnWidth(1, 32)
+	})
+	return info_Tree.group.QWidget
+}
+
+func updateInfo_List(node tables.Node) {
+	updateList_Generic(node.AltNames, tree_AltNames)
+	updateList_Generic(node.Approx, tree_Approx)
+	updateList_Generic(node.Equiv, tree_Equiv)
+	updateList_Generic(node.Refs, tree_Refs)
+	updateList_Generic(node.Remarks, tree_Remarks)
+}
+
+func updateList_Generic(stuff []string, target *qt6.QTreeWidgetItem) {
+	for range target.ChildCount() {
+		target.RemoveChild(target.Child(0))
+	}
+
+	var color *qt6.QColor
+	if len(stuff) == 0 {
+		color = qt6.NewQColor6(sakurapine.Text.Muted)
+	} else {
+		color = qt6.NewQColor6(sakurapine.Text.Normal)
+	}
+
+	target.SetForeground(0, qt6.NewQBrush3(color))
+	target.SetForeground(1, qt6.NewQBrush3(color))
+	target.SetText(1, fmt.Sprintf("%d", len(stuff)))
+
+	for _, item := range stuff {
+		child := qt6.NewQTreeWidgetItem()
+		child.SetFlags(qt6.ItemNeverHasChildren)
+		label := qt6.NewQLabel3(render_List(item))
+		label.SetWordWrap(true)
+		label.OnLinkActivated(onLink)
+		target.AddChild(child)
+		info_Tree.widget.SetItemWidget(child, 0, label.QWidget)
+	}
+
+	target.SetExpanded(true)
+}
+func render_List(s string) string {
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = link.ReplaceAllStringFunc(s, func(u string) string {
+		node, ok := names[u]
+		var title string
+		if !ok || node == nil {
+			title = "&lt;Undefined&gt;"
+		} else {
+			title = caser.String(names[u].Name)
+		}
+		i, err := strconv.ParseInt(u, 16, 64)
+		if err != nil {
+			panic(err)
+		}
+
+		return fmt.Sprintf("<a href=\"%d\">%s: %s</a>", i, u, title)
+	})
+	return s
 }
 
 func makeInfo_Details() *qt6.QWidget {
@@ -313,68 +397,8 @@ func updateInfo_Preview(node tables.Node) {
 	info_Preview.widget.SetText(string(node.Point))
 }
 
-func makeInfo_AltNames() *qt6.QWidget {
-	label := info_AltNames.Init("Alternate Names", qt6.NewQLabel2())
-	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
-	label.OnLinkActivated(onLink)
-	return info_AltNames.group.QWidget
-}
-
-func updateInfo_AltNames(node tables.Node) {
-	updateInfo_Generic(node.AltNames, info_AltNames.widget)
-}
-
-func makeInfo_Remarks() *qt6.QWidget {
-	label := info_Remarks.Init("Remarks", qt6.NewQLabel2())
-	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
-	label.OnLinkActivated(onLink)
-	return info_Remarks.group.QWidget
-}
-
-func updateInfo_Remarks(node tables.Node) {
-	updateInfo_Generic(node.Remarks, info_Remarks.widget)
-}
-
-func makeInfo_Refs() *qt6.QWidget {
-	label := info_Refs.Init("References", qt6.NewQLabel2())
-	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
-	label.OnLinkActivated(onLink)
-	return info_Refs.group.QWidget
-}
-
-func updateInfo_Refs(node tables.Node) {
-	updateInfo_Generic(node.Refs, info_Refs.widget)
-}
-
-func makeInfo_Approx() *qt6.QWidget {
-	label := info_Approx.Init("Approximates", qt6.NewQLabel2())
-	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
-	label.OnLinkActivated(onLink)
-	return info_Approx.group.QWidget
-}
-
-func updateInfo_Approx(node tables.Node) {
-	updateInfo_Generic(node.Approx, info_Approx.widget)
-}
-
-func makeInfo_Equiv() *qt6.QWidget {
-	label := info_Equiv.Init("Equivalents", qt6.NewQLabel2())
-	label.SetWordWrap(true)
-	label.SetTextInteractionFlags(qt6.TextSelectableByMouse | qt6.LinksAccessibleByMouse)
-	label.OnLinkActivated(onLink)
-	return info_Equiv.group.QWidget
-}
-
-func updateInfo_Equiv(node tables.Node) {
-	updateInfo_Generic(node.Equiv, info_Equiv.widget)
-}
-
 func makeInfo_RawBlock() *qt6.QWidget {
-	label := info_RawBlock.Init("Raw Node Data", qt6.NewQLabel2())
+	label := info_RawBlock.Init("Raw Unicode Data", qt6.NewQLabel2())
 	label.SetAlignment(qt6.AlignTop | qt6.AlignLeft)
 	label.SetFont(monoFont)
 	label.SetWordWrap(true)
@@ -399,38 +423,6 @@ func updateInfo_RawBlock(node tables.Node) {
 }
 
 var link = regexp.MustCompile(`\b([A-F0-9]{4,})\b`)
-
-func updateInfo_Generic(list []string, target *qt6.QLabel) {
-	if len(list) == 0 {
-		target.SetAlignment(qt6.AlignCenter)
-		target.SetText("<i>none</i>")
-		return
-	}
-
-	target.SetAlignment(qt6.AlignLeft)
-	entries := make([]string, len(list))
-	for i, s := range list {
-		s = strings.ReplaceAll(s, "<", "&lt;")
-		s = link.ReplaceAllStringFunc(s, func(u string) string {
-			node, ok := names[u]
-			var title string
-			if !ok || node == nil {
-				title = "&lt;Undefined&gt;"
-			} else {
-				title = caser.String(names[u].Name)
-			}
-			i, err := strconv.ParseInt(u, 16, 64)
-			if err != nil {
-				panic(err)
-			}
-
-			return fmt.Sprintf("<a href=\"%d\">%s: %s</a>", i, u, title)
-		})
-		entries[i] = fmt.Sprintf("<li>%s</li>", s)
-	}
-
-	target.SetText(fmt.Sprintf("<ul>%s</ul>", strings.Join(entries, "")))
-}
 
 func onLink(link string) {
 	point, err := strconv.Atoi(link)
